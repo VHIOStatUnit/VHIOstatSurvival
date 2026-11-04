@@ -1,9 +1,14 @@
 rm(list = ls(all = TRUE))
 
-devtools::install("~/Desktop/VHIO/R code/Package/VHIOstatSurvival")
+# remove.packages("VHIOstatSurvival")
+# devtools::install("~/Desktop/VHIO/R code/Package/VHIOstatSurvival")
 
 library(VHIOstatSurvival)
 library(tidyverse)
+
+
+# VHIOstatTools
+# VHIOstat
 
 # ============================================================================ #
 #                               Data Preparation                               #
@@ -21,13 +26,21 @@ lung2 <- lung |>
          event_pfs = ifelse(time_pfs < time_os, 1, event_os)) |>
   filter(!is.na(ph.ecog), !is.na(sex), !is.na(age))
 
-ps.formula <- as.formula(paste("treatment", "~", paste(c("sex", "age", "ph.ecog"), collapse = "+")))
 
-W.out <- WeightIt::weightit(ps.formula, data = lung2, method = "ps", estimand = "ATE")
+# ------------------------------------ #
+#           Propensity score           #
+# ------------------------------------ #
 
-lung2$weights_ATE <- W.out$weights
+lung2 <- prop_score(data = lung2, 
+                    baselinevars = c("age", "sex"), 
+                    treatment = "treatment",
+                    method = "glm",
+                    estimand = "ATE",
+                    stabilize = TRUE, 
+                    smd = TRUE, 
+                    table.show = TRUE)
 
-
+lung2$weights_ATE
 
 ################################################################################
 #                               Survival Plot                                  #
@@ -36,7 +49,7 @@ lung2$weights_ATE <- W.out$weights
 surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment,
           dat          = lung2,
           #weights      = lung2$weights_ATE,
-          palette      = c("dodgerblue3", "firebrick"),
+          #palette      = c("dodgerblue3", "firebrick"),
           labels       = c("Arm A", "Arm B"), 
           labels.table.unadj = FALSE,
           # Increase the text size of risk table title labels
@@ -52,6 +65,7 @@ surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment,
                                 hr.table.colhead.cex = 0.8,
                                 hr.table.rowhead.cex = 0.75,
                                 hr.table.line.lwd = 2
+                                
           ),
           # List of arguments for ggsurvplot
           ggsurvplot.args = list(ylab                  = "Overall survival (%)",
@@ -249,8 +263,8 @@ surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment + sex,
           dat          = lung2,
           weights      = lung2$weights_ATE,
           #palette      = c("dodgerblue3", "firebrick"),
-          labels       = c("Arm A + Male", "Arm A + Female", "Arm B + Male", "Arm B + Female"), 
-          labels.table.unadj = FALSE,
+          labels       = c("Arm A + guy", "Arm A + Female", "Arm B + Male", "Arm B + Female"), 
+          labels.table.unadj = TRUE,
           # Increase the text size of risk table title labels
           #risk.table.title.font = c(14, "bold"),   # bigger, bold risk table title
           #risk.table.ytext.font = c(13),           # bigger risk table group labels
@@ -259,9 +273,10 @@ surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment + sex,
                                 position    = "topright",
                                 x_margin = -0.04,
                                 y_margin = -0.05,
-                                surv.times = c(365),
+                                surv.times = c(365, 400),
                                 # bigger HR table cell text
                                 hr.table.core.cex    = 0.75,
+                              
                                 hr.table.colhead.cex = 0.8,
                                 hr.table.rowhead.cex = 0.75,
                                 hr.table.line.lwd = 2
@@ -356,8 +371,10 @@ res1 <- cox_forest(
   # Only use of covariate_label_row = TRUE,
   # label_indent = 4,
   # Optional: increases the space between the first 3 columns
-  col_spacing = c(0, 0)
+  col_spacing = c(2, 1)
 )
+
+res1$results_table
 
 # Ploting univariable model
 res1$plots$univariable
@@ -495,6 +512,7 @@ res3$plots$Sex
 
 res3$combined_plots
 
+res3$plots$Age
 
 
 ################################################################################
