@@ -136,5 +136,4 @@ surv.plot(
   tableplot.args = list(median.show = TRUE, surv.times = c(6, 12, 24))
 )
 }
-
 }

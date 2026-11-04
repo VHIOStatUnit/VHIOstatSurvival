@@ -95,6 +95,23 @@
   )
 }
 
+#' Mask estimates that cannot be drawn on a log axis
+#'
+#' Any row where HR, lower or upper CI is NA, non-finite or <= 0 gets all three
+#' values set to NA, so the table text is still shown but no point/CI is drawn
+#' (log(0) = -Inf would otherwise make forestploter fail).
+#' @noRd
+.mask_invalid_ci <- function(est, lower, upper) {
+  ok <- is.finite(est) & is.finite(lower) & is.finite(upper) &
+    est > 0 & lower > 0 & upper > 0
+  ok[is.na(ok)] <- FALSE
+  list(
+    est   = ifelse(ok, est,   NA_real_),
+    lower = ifelse(ok, lower, NA_real_),
+    upper = ifelse(ok, upper, NA_real_)
+  )
+}
+
 #' Set excluded levels to NA so complete-case filtering removes them
 #' @noRd
 .apply_exclude_levels <- function(data, exclude_levels) {
@@ -374,6 +391,10 @@
   multi_endpoint <- length(endpoints) > 1
   endpoint_col   <- stats::setNames(rep(endpoint_palette, length.out = length(endpoints)), endpoints)
 
+  # Values used for drawing only (zero / infinite / NA estimates are not plotted;
+  # the table text still shows the original numbers)
+  plot_vals <- .mask_invalid_ci(df$hr, df$conf_low, df$conf_high)
+
   # Table columns (optional spacer columns)
   if (covariate_label_row) {
     # One combined column: covariate label (bold) + indented levels
@@ -408,7 +429,7 @@
   ci_col <- which(names(tbl) == " ")
 
   if (is.null(xlim)) {
-    finite_bounds <- c(df$conf_low, df$conf_high, 1)
+    finite_bounds <- c(plot_vals$lower, plot_vals$upper, 1)
     finite_bounds <- finite_bounds[is.finite(finite_bounds) & finite_bounds > 0]
     x_range <- range(finite_bounds, na.rm = TRUE)
     xlim <- c(max(0.05, x_range[1] * 0.8), x_range[2] * 1.25)
@@ -445,9 +466,9 @@
 
   p <- forestploter::forest(
     tbl,
-    est       = df$hr,
-    lower     = df$conf_low,
-    upper     = df$conf_high,
+    est       = plot_vals$est,
+    lower     = plot_vals$lower,
+    upper     = plot_vals$upper,
     sizes     = sizes,
     ci_column = ci_col,
     ref_line  = 1,
@@ -552,6 +573,10 @@
 #' a forest plot. A "Reference" row is shown for the reference level of every
 #' categorical covariate. Non-reference levels for which no estimate could be
 #' obtained (e.g. too few patients or events) are displayed as "NA".
+#'
+#' Estimates whose HR or CI limits are zero, infinite or missing (e.g. levels
+#' without events) cannot be shown on the log-scaled axis. They are listed in
+#' the table text, but no point or CI is drawn for them.
 #'
 #' Two model types are supported (see `model_type`):
 #' \describe{

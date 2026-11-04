@@ -131,6 +131,10 @@ categorical covariate. Non-reference levels for which no estimate could be
 obtained (e.g. too few patients or events) are displayed as "NA".
 }
 \details{
+Estimates whose HR or CI limits are zero, infinite or missing (e.g. levels
+without events) cannot be shown on the log-scaled axis. They are listed in
+the table text, but no point or CI is drawn for them.
+
 Two model types are supported (see \code{model_type}):
 \describe{
 \item{univariable}{One Cox model per covariate:

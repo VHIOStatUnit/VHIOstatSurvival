@@ -100,7 +100,7 @@
 #'   tableplot.args = list(median.show = TRUE, surv.times = c(6, 12, 24))
 #' )
 #' }
-#'
+#' @import survminer
 #' @export
 surv_plot <- function(
     surv.formula = NULL,
