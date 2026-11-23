@@ -497,7 +497,7 @@ surv_plot <- function(
 
   s <- summary(survfit, times = times, extend = TRUE)
 
-  fmt_pct <- function(x) ifelse(is.na(x), "NR", base::paste0(round(x * 100, 1), "%"))
+  fmt_pct <- function(x) ifelse(is.na(x), "NR", base::paste0(sprintf("%.1f", round(x * 100, 1)), "%"))
 
   has_strata <- !is.null(s$strata)
 
@@ -670,7 +670,7 @@ surv_plot <- function(
     ci_low  <- sapply(cox_summary$conf.int[, "lower .95"],     .format_number)
     ci_high <- sapply(cox_summary$conf.int[, "upper .95"],     .format_number)
     pval     <- cox_summary$coefficients[, "Pr(>|z|)"]
-    pval_txt <- ifelse(pval < 0.01, "<0.01", round(pval, 2))
+    pval_txt <- ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval))
     p.value  <- TRUE   # always show p-value from model
   }
 
@@ -687,7 +687,7 @@ surv_plot <- function(
     ci_low  <- sapply(exp(-(coef_val + 1.96 * se) / scale), .format_number)
     ci_high <- sapply(exp(-(coef_val - 1.96 * se) / scale), .format_number)
     pval     <- vapply(names_var, function(v) aft_summary$table[v, "p"], numeric(1))
-    pval_txt <- ifelse(pval < 0.01, "<0.01", round(pval, 2))
+    pval_txt <- ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval))
     p.value  <- TRUE
   }
 
@@ -712,7 +712,7 @@ surv_plot <- function(
       if (!"p.val" %in% names(data.table))
         stop("data.table must contain a 'p.val' column when p.value = TRUE.")
       pval     <- data.table$p.val
-      pval_txt <- ifelse(pval < 0.01, "<0.01", round(pval, 2))
+      pval_txt <- ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval))
     }
   }
 
@@ -739,7 +739,7 @@ surv_plot <- function(
 
     med_txt <- mapply(
       function(m, lo, hi)
-        base::paste0(fmt_med(m), " (", fmt_med(lo), " - ", fmt_med(hi), ")"),
+        base::paste0(sprintf("%.1f", fmt_med(m)), " (", sprintf("%.1f", fmt_med(lo)), " - ", sprintf("%.1f", fmt_med(hi)), ")"),
       med_vals, med_lo, med_hi
     )
   }
@@ -761,7 +761,7 @@ surv_plot <- function(
   # Columns are assembled in a fixed left-to-right order:
   #   Median  ->  S(t) at each user time point  ->  HR  ->  p-value
   # =====================================================
-  hr_col <- if (HR.show) c("Ref.", base::paste0(hr, " (", ci_low, " - ", ci_high, ")")) else NULL
+  hr_col <- if (HR.show) c("Ref.", base::paste0(sprintf("%.2f", hr), " (", sprintf("%.2f", ci_low), " - ", sprintf("%.2f", ci_high), ")")) else NULL
 
   cols <- list()
 
