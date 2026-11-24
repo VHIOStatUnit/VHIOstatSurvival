@@ -735,11 +735,11 @@ surv_plot <- function(
     }
 
     # Helper: format a single median value / CI bound (NA → "NR")
-    fmt_med <- function(x) ifelse(is.na(x), "NR", .format_number(x))
+    fmt_med <- function(x) ifelse(is.na(x), "NR", sprintf("%.1f", .format_number(x)))
 
     med_txt <- mapply(
       function(m, lo, hi)
-        base::paste0(sprintf("%.1f", fmt_med(m)), " (", sprintf("%.1f", fmt_med(lo)), " - ", sprintf("%.1f", fmt_med(hi)), ")"),
+        base::paste0(fmt_med(m), " (", fmt_med(lo), " - ", fmt_med(hi), ")"),
       med_vals, med_lo, med_hi
     )
   }
