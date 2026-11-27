@@ -23,7 +23,8 @@ lung2 <- lung |>
          ph.ecog   = factor(ph.ecog),
          treatment = sample(c("Arm A", "Arm B"), n(), replace = TRUE),
          time_pfs  = pmin(time_os, time_os * runif(n(), 0.4, 0.9)),
-         event_pfs = ifelse(time_pfs < time_os, 1, event_os)) |>
+         event_pfs = ifelse(time_pfs < time_os, 1, event_os),
+         id = 1:n()) |>
   filter(!is.na(ph.ecog), !is.na(sex), !is.na(age))
 
 
@@ -31,16 +32,22 @@ lung2 <- lung |>
 #           Propensity score           #
 # ------------------------------------ #
 
-lung2 <- prop_score(data = lung2, 
-                    baselinevars = c("age", "sex"), 
+lung2 <- prop_score(data = lung2,
+                    baselinevars = c("age", "sex"),
                     treatment = "treatment",
                     method = "glm",
                     estimand = "ATE",
-                    stabilize = TRUE, 
-                    smd = TRUE, 
-                    table.show = TRUE)
+                    stabilize = TRUE,
+                    smd = TRUE,
+                    table.show = TRUE,
+                    love.plot.show = TRUE,
+                    love.plot.args = list(binary = "std",
+                                          abs = TRUE,
+                                          thresholds = c(m = 0.1)),
+                    plot_love_iptw = TRUE)
 
-lung2$weights_ATE
+#lung2$weights_ATE
+
 
 ################################################################################
 #                               Survival Plot                                  #
@@ -50,7 +57,7 @@ surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment,
           dat          = lung2,
           #weights      = lung2$weights_ATE,
           #palette      = c("dodgerblue3", "firebrick"),
-          labels       = c("Arm A", "Arm B"), 
+          labels       = c("Arm A", "Arm B"),
           labels.table.unadj = FALSE,
           # Increase the text size of risk table title labels
           #risk.table.title.font = c(14, "bold"),   # bigger, bold risk table title
@@ -65,15 +72,15 @@ surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment,
                                 hr.table.colhead.cex = 0.8,
                                 hr.table.rowhead.cex = 0.75,
                                 hr.table.line.lwd = 2
-                                
+
           ),
           # List of arguments for ggsurvplot
           ggsurvplot.args = list(ylab                  = "Overall survival (%)",
                                  xlab                  = "Time in Months until Death",
                                  tables.theme          = survminer::theme_cleantable(),
                                  title                 = "Test Survival Curve",
-                                 pval                  = F, 
-                                 pval.method           = F,   
+                                 pval                  = F,
+                                 pval.method           = F,
                                  censor                = T,
                                  censor.shape          = 124,
                                  censor.size           = 1.5,
@@ -103,7 +110,7 @@ surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment,
           dat          = lung2,
           weights      = lung2$weights_ATE,
           palette      = c("dodgerblue3", "firebrick"),
-          labels       = c("Arm A", "Arm B"), 
+          labels       = c("Arm A", "Arm B"),
           labels.table.unadj = FALSE,
           # Increase the text size of risk table title labels
           #risk.table.title.font = c(14, "bold"),   # bigger, bold risk table title
@@ -125,8 +132,8 @@ surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment,
                                  xlab                  = "Time in Months until Death",
                                  tables.theme          = survminer::theme_cleantable(),
                                  title                 = "Test Survival Curve",
-                                 pval                  = F, 
-                                 pval.method           = F,   
+                                 pval                  = F,
+                                 pval.method           = F,
                                  censor                = T,
                                  censor.shape          = 124,
                                  censor.size           = 1.5,
@@ -156,7 +163,7 @@ surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment,
           dat          = lung2,
           weights      = lung2$weights_ATE,
           palette      = c("dodgerblue3", "firebrick"),
-          labels       = c("Arm A", "Arm B"), 
+          labels       = c("Arm A", "Arm B"),
           labels.table.unadj = FALSE,
           # Increase the text size of risk table title labels
           #risk.table.title.font = c(14, "bold"),   # bigger, bold risk table title
@@ -179,8 +186,8 @@ surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment,
                                  xlab                  = "Time in Months until Death",
                                  tables.theme          = survminer::theme_cleantable(),
                                  title                 = "Test Survival Curve",
-                                 pval                  = F, 
-                                 pval.method           = F,   
+                                 pval                  = F,
+                                 pval.method           = F,
                                  censor                = T,
                                  censor.shape          = 124,
                                  censor.size           = 1.5,
@@ -210,7 +217,7 @@ surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment + sex,
           dat          = lung2,
           weights      = lung2$weights_ATE,
           #palette      = c("dodgerblue3", "firebrick"),
-          #labels       = c("Arm A", "Arm B"), 
+          #labels       = c("Arm A", "Arm B"),
           labels.table.unadj = FALSE,
           # Increase the text size of risk table title labels
           #risk.table.title.font = c(14, "bold"),   # bigger, bold risk table title
@@ -232,8 +239,8 @@ surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment + sex,
                                  xlab                  = "Time in Months until Death",
                                  tables.theme          = survminer::theme_cleantable(),
                                  title                 = "Test Survival Curve",
-                                 pval                  = F, 
-                                 pval.method           = F,   
+                                 pval                  = F,
+                                 pval.method           = F,
                                  censor                = T,
                                  censor.shape          = 124,
                                  censor.size           = 1.5,
@@ -263,7 +270,7 @@ surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment + sex,
           dat          = lung2,
           weights      = lung2$weights_ATE,
           #palette      = c("dodgerblue3", "firebrick"),
-          labels       = c("Arm A + guy", "Arm A + Female", "Arm B + Male", "Arm B + Female"), 
+          labels       = c("Arm A + guy", "Arm A + Female", "Arm B + Male", "Arm B + Female"),
           labels.table.unadj = TRUE,
           # Increase the text size of risk table title labels
           #risk.table.title.font = c(14, "bold"),   # bigger, bold risk table title
@@ -276,7 +283,7 @@ surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment + sex,
                                 surv.times = c(365, 400),
                                 # bigger HR table cell text
                                 hr.table.core.cex    = 0.75,
-                              
+
                                 hr.table.colhead.cex = 0.8,
                                 hr.table.rowhead.cex = 0.75,
                                 hr.table.line.lwd = 2
@@ -286,8 +293,8 @@ surv_plot(surv.formula = Surv(time_os, event_os) ~ treatment + sex,
                                  xlab                  = "Time in Months until Death",
                                  tables.theme          = survminer::theme_cleantable(),
                                  title                 = "Test Survival Curve",
-                                 pval                  = F, 
-                                 pval.method           = F,   
+                                 pval                  = F,
+                                 pval.method           = F,
                                  censor                = T,
                                  censor.shape          = 124,
                                  censor.size           = 1.5,
@@ -341,8 +348,8 @@ res1 <- cox_forest(
   endpoint_labels = c("Progression-free Survival", "Overall Survival"),
   # Optional: if you want to change the reference level of a covariate
   ref_levels = list(sex = "Male"),
-  # Optional: can exlude labels of each covariate just for the displaying 
-  # if for example only 4 patient are in one group the Cox model will be 
+  # Optional: can exlude labels of each covariate just for the displaying
+  # if for example only 4 patient are in one group the Cox model will be
   # obtained with those patient and group but not displayed in the forestplot
   # because it has no meaning
   exclude_levels = list(ph.ecog = "3"),
@@ -359,12 +366,12 @@ res1 <- cox_forest(
   # Optional: only if using PS
   #weights = "weights_ATE", # optional if PS used
   # Argument for the displaying of the CI (check forestmodel::forest for each meaning)
-  ci_pch = 15, 
+  ci_pch = 15,
   ci_lty = 1,
-  ci_lwd = 3, 
-  ci_Theight = 0.4, 
+  ci_lwd = 3,
+  ci_Theight = 0.4,
   sizes = 1,
-  # Optional: Specify row height 
+  # Optional: Specify row height
   row_height = 1.4,
   # Optional: TRUE creates a seperate row for the variable name
   covariate_label_row = FALSE,
@@ -407,8 +414,8 @@ res2 <- cox_forest(
   endpoint_labels = c("Progression-free Survival", "Overall Survival"),
   # Optional: if you want to change the reference level of a covariate
   ref_levels = list(sex = "Male"),
-  # Optional: can exlude labels of each covariate just for the displaying 
-  # if for example only 4 patient are in one group the Cox model will be 
+  # Optional: can exlude labels of each covariate just for the displaying
+  # if for example only 4 patient are in one group the Cox model will be
   # obtained with those patient and group but not displayed in the forestplot
   # because it has no meaning
   exclude_levels = list(ph.ecog = "3"),
@@ -425,12 +432,12 @@ res2 <- cox_forest(
   # Optional: only if using PS
   #weights = "weights_ATE", # optional if PS used
   # Argument for the displaying of the CI (check forestmodel::forest for each meaning)
-  ci_pch = 15, 
+  ci_pch = 15,
   ci_lty = 1,
-  ci_lwd = 3, 
-  ci_Theight = 0.4, 
+  ci_lwd = 3,
+  ci_Theight = 0.4,
   sizes = 1,
-  # Optional: Specify row height 
+  # Optional: Specify row height
   row_height = 1.4,
   # Optional: TRUE creates a seperate row for the variable name
   covariate_label_row = TRUE,
@@ -452,14 +459,48 @@ res2$plots$multivariable
 #                                  Subgroup Cox                                #
 # ============================================================================ #
 
+lung2_male <- lung2 |> filter(sex == "Male")
+lung2_female <- lung2 |> filter(sex == "Female")
+
+lung2_male <- prop_score(data = lung2_male,
+                    baselinevars = c("age", "ph.ecog"),
+                    treatment = "treatment",
+                    method = "glm",
+                    estimand = "ATE",
+                    stabilize = TRUE,
+                    smd = TRUE,
+                    table.show = FALSE,
+                    love.plot.show = FALSE,
+                    plot_love_iptw = FALSE)
+
+lung2_female <- prop_score(data = lung2_female,
+                         baselinevars = c("age", "ph.ecog"),
+                         treatment = "treatment",
+                         method = "glm",
+                         estimand = "ATE",
+                         stabilize = TRUE,
+                         smd = TRUE,
+                         table.show = FALSE,
+                         love.plot.show = FALSE,
+                         plot_love_iptw = FALSE)
+
+lung2_sex <- rbind(lung2_male |> select(id, weights_ATE),
+                   lung2_female |> select(id, weights_ATE)) |>
+  rename(weights_ATE_sex = weights_ATE)
+
+lung2_comb <- lung2 |> merge(lung2_sex, by = "id", all.x = TRUE)
+
 
 res3 <- cox_subgroup_forest(
   data = lung2,
+  #data = lung2_comb,
   # Specify here all covariates that you want to include
   covariates = c("sex", "ph.ecog", "age"),
+  #covariates = c("sex", "age"),
   # Specify here the names you want to have to be displayed
   # for each covariate
   labels = c("Sex", "ECOG PS", "Age"),
+  #labels = c("Sex", "Age"),
   # Treatment variable
   treatment = "treatment",
   # Optional: order of the treatment labels
@@ -477,8 +518,8 @@ res3 <- cox_subgroup_forest(
   time_unit = "days",
   # Colour palette
   palette = c("#0F084B", "#A6CFD5"),
-  # Optional: can exlude labels of each covariate just for the displaying 
-  # if for example only 4 patient are in one group the Cox model will be 
+  # Optional: can exlude labels of each covariate just for the displaying
+  # if for example only 4 patient are in one group the Cox model will be
   # obtained with those patient and group but not displayed in the forestplot
   # because it has no meaning
   # exclude_levels = list(ph.ecog = "3"),
@@ -489,14 +530,15 @@ res3 <- cox_subgroup_forest(
   # Width of the forestplot
   length_plot = 60,
   # Optional: only if using PS
-  # weights = "weights_ATE", # optional if PS used
+  #weights = c("weights_ATE_sex", "weights_ATE"), # covariate specific weights
+  #overall_weights = "weights_ATE", # overall weights
   # Argument for the displaying of the CI (check forestmodel::forest for each meaning)
-  ci_pch = 15, 
+  ci_pch = 15,
   ci_lty = 1,
-  ci_lwd = 3, 
-  ci_Theight = 0.4, 
+  ci_lwd = 3,
+  ci_Theight = 0.4,
   sizes = 1,
-  # Optional: Specify row height 
+  # Optional: Specify row height
   row_height = 1.4,
   # Optional: TRUE creates a seperate row for the variable name
   covariate_label_row = TRUE,
@@ -529,36 +571,36 @@ res <- model_forest(
   # Endpoint label of interest
   endpoint_labels = "Overall Survival",
   # Optional: if you want to change the reference level of a covariate
-  ref_levels = NULL, 
-  # Optional: can exlude labels of each covariate just for the displaying 
-  # if for example only 4 patient are in one group the Cox model will be 
+  ref_levels = NULL,
+  # Optional: can exlude labels of each covariate just for the displaying
+  # if for example only 4 patient are in one group the Cox model will be
   # obtained with those patient and group but not displayed in the forestplot
   # because it has no meaning
   exclude_levels = NULL,
   # Exponentiate the estimate of the outcome of interest in the forestplot
-  exponentiate = TRUE, 
-  # Optional: Label of the effect of interest (auto: HR / OR / RR / Estimate) 
+  exponentiate = TRUE,
+  # Optional: Label of the effect of interest (auto: HR / OR / RR / Estimate)
   # or a string.
-  effect_label = NULL, 
+  effect_label = NULL,
   # Confidence Level
   ci_level = 0.95,
-  # Digits 
-  digits = 2, 
+  # Digits
+  digits = 2,
   # Colour palette
-  palette = "#0F084B", 
+  palette = "#0F084B",
   # Limits of the x-axis for the forestplot
   xlim = c(0.25, 4),
   # Ticks at the x-axis
   ticks_at = c(0.5, 1, 2),
   # Width of the forestplot
-  length_plot = 60, 
+  length_plot = 60,
   # Argument for the displaying of the CI (check forestmodel::forest for each meaning)
-  ci_pch = 15, 
+  ci_pch = 15,
   ci_lty = 1,
-  ci_lwd = 3, 
-  ci_Theight = 0.4, 
+  ci_lwd = 3,
+  ci_Theight = 0.4,
   sizes = 1,
-  # Optional: Specify row height 
+  # Optional: Specify row height
   row_height = 1.4,
   # Optional: TRUE creates a seperate row for the variable name
   covariate_label_row = TRUE,
@@ -579,24 +621,24 @@ res_glm <- model_forest(formula = list(as.formula("treatment_bin ~ sex + log(age
                         fit_fun = glm,
                         family = "binomial",
                         endpoint_labels = "Overall Survival",
-                        ref_levels = NULL, 
+                        ref_levels = NULL,
                         exclude_levels = NULL,
-                        exponentiate = TRUE, 
-                        effect_label = NULL, 
+                        exponentiate = TRUE,
+                        effect_label = NULL,
                         ci_level = 0.95,
-                        digits = 2, 
-                        palette = "#0F084B", 
-                        xlim = c(0.25, 4), 
+                        digits = 2,
+                        palette = "#0F084B",
+                        xlim = c(0.25, 4),
                         ticks_at = c(0.5, 1, 2),
-                        length_plot = 60, 
-                        ci_pch = 15, 
-                        ci_lty = 1, 
+                        length_plot = 60,
+                        ci_pch = 15,
+                        ci_lty = 1,
                         ci_lwd = 3,
-                        ci_Theight = 0.4, 
-                        sizes = 1, 
+                        ci_Theight = 0.4,
+                        sizes = 1,
                         risk_labels = NULL,
-                        title = NULL, 
-                        row_height = 1.5, 
+                        title = NULL,
+                        row_height = 1.5,
                         covariate_label_row = FALSE,
                         col_spacing = c(1, 1))
 
@@ -611,7 +653,7 @@ d <- data.frame(
   age  = rnorm(300, 60, 10)
 )
 
-res <- model_forest(formula = as.formula(resp ~ arm + sex + I(age/10)), 
+res <- model_forest(formula = as.formula(resp ~ arm + sex + I(age/10)),
                     data = d, #family = binomial,
                     fit_fun = glm,
                     covariate_label_row = TRUE,
