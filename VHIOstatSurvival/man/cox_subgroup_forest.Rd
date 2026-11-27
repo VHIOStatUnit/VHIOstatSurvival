@@ -22,6 +22,7 @@ cox_subgroup_forest(
   ticks_at = NULL,
   length_plot = 40,
   weights = NULL,
+  overall_weights = NULL,
   ci_pch = 15,
   ci_lty = 1,
   ci_lwd = 3,
@@ -90,9 +91,35 @@ built-in palette of five colours is used (recycled if necessary).}
 \item{length_plot}{Integer. Width of the blank column reserved for the CI
 graphic, expressed as a number of spaces. Default 40.}
 
-\item{weights}{Optional character string naming a weight column in
-\code{data}, passed to \code{survival::coxph()} and
-\code{survival::survfit()}. Default \code{NULL} (unweighted).}
+\item{weights}{Optional weights, passed to \code{survival::coxph()} and
+\code{survival::survfit()}. One of:
+\itemize{
+\item \code{NULL} (default): if \code{overall_weights} is also
+\code{NULL} (or \code{NA}), all analyses are unweighted; if
+\code{overall_weights} is a column name, that column is used for
+every covariate's subgroup analyses as well as for the
+"All patients" rows;
+\item a single column name: the same weights for every covariate;
+\item a character vector of column names with the same length and
+order as \code{covariates}: \code{weights[i]} is used for every
+model of \code{covariates[i]}. Use \code{NA} for a covariate that
+should be analysed unweighted.
+}
+Matching is by position, not by column name: \code{weights[i]} belongs
+to \code{covariates[i]}. Rows with a missing weight are dropped from that
+covariate's subgroup analyses.}
+
+\item{overall_weights}{Optional weights for the "All patients" rows (in
+every per-covariate plot and in \code{combined_plots}). One of:
+\itemize{
+\item \code{NULL} (default): each covariate's "All patients" rows use
+that covariate's \code{weights} (in \code{combined_plots}, the first
+covariate's);
+\item a single column name, e.g. \code{"weights_ALL"}. If
+\code{weights} is \code{NULL}, this column is also used for every
+covariate's subgroup rows;
+\item \code{NA}: "All patients" rows are unweighted.
+}}
 
 \item{ci_pch}{Point symbol for the HR estimate. Default 15 (filled square).}
 
@@ -145,7 +172,7 @@ A list with elements:
 \item{all_result}{Named list of the per-covariate results tables.}
 \item{results_table}{Tidy data frame with one row per
 covariate x subgroup x endpoint, including HR, 95 percent CI, p-value, N,
-events, and median survival per arm.}
+events, median survival per arm, and the weight column used.}
 \item{median_survival_table}{Subset of \code{results_table} with just
 the median survival columns, for easy tabulation.}
 \item{plots}{Named list of forestploter plot objects, one per covariate
@@ -158,6 +185,11 @@ none were analysed.}
 \item{arm_order}{The two treatment arm levels, in the order used for
 the HR calculation (Arm A vs Arm B).}
 \item{arm_labels}{The display labels used for the two arms.}
+\item{weights_used}{Named character vector (names = covariate labels)
+giving the weight column used for each covariate's subgroup rows
+(\code{NA} = unweighted).}
+\item{overall_weights_used}{The weight column used for the "All
+patients" rows, per covariate (\code{NA} = unweighted).}
 }
 }
 \description{
@@ -176,20 +208,50 @@ valid for every row. Continuous covariates are split at their median for
 the plot; the HR per one-unit increase (stratified by treatment) is
 returned separately in \code{continuous_effects}. Subgroups are fitted
 independently: no interaction test is computed.
+
+Weighting rules:
+\itemize{
+\item neither \code{weights} nor \code{overall_weights}: unweighted;
+\item only \code{overall_weights}: used for every covariate's subgroup
+rows and for the "All patients" rows;
+\item only \code{weights}: per-covariate weights, also used for that
+covariate's "All patients" rows;
+\item both: per-covariate weights for subgroup rows,
+\code{overall_weights} for the "All patients" rows.
+}
 }
 \examples{
 \dontrun{
+# Different weights for each covariate (same order as `covariates`);
+# NA = unweighted for that covariate.
 result <- cox_subgroup_forest(
   data = my_trial_data,
-  covariates = c("sex", "age"),
-  labels = c("Sex", "Age"),
+  covariates = c("sex", "age", "ecog_ps"),
+  labels = c("Sex", "Age", "ECOG PS"),
   treatment = "arm",
   time = "os_time",
   event = "os_event",
   continuous_vars = "age",
+  weights = c("w_sex", "w_age", NA),
+  overall_weights = "w_all",
   exclude_levels = list(sex = "Unknown")
 )
 grid::grid.draw(result$plots[["Sex"]])
 grid::grid.draw(result$combined_plots)
+result$weights_used
+result$overall_weights_used
+
+# Only overall weights: "w_all" is used for every covariate and for
+# the "All patients" rows.
+result2 <- cox_subgroup_forest(
+  data = my_trial_data,
+  covariates = c("sex", "age", "ecog_ps"),
+  labels = c("Sex", "Age", "ECOG PS"),
+  treatment = "arm",
+  time = "os_time",
+  event = "os_event",
+  overall_weights = "w_all"
+)
+result2$weights_used
 }
 }

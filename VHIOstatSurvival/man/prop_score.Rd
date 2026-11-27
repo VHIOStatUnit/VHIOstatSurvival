@@ -17,6 +17,9 @@ prop_score(
   stabilize = FALSE,
   smd = FALSE,
   love.plot.show = FALSE,
+  love.plot.args = list(),
+  plot_love_iptw = FALSE,
+  plot_love_iptw.args = list(),
   table.show = FALSE,
   table.show.html = FALSE,
   ...
@@ -57,8 +60,28 @@ differences (and an overall column) instead of p-values. Only available
 for binary treatments; requires the \pkg{smd} package. Default \code{FALSE}.}
 
 \item{love.plot.show}{Logical. If \code{TRUE}, print a love plot of absolute
-standardized mean differences before and after weighting
-(threshold 0.1). Default \code{FALSE}.}
+standardized mean differences before and after weighting, made with
+\code{\link[cobalt:love.plot]{cobalt::love.plot()}}. Default \code{FALSE}.}
+
+\item{love.plot.args}{A named list of arguments passed to
+\code{\link[cobalt:love.plot]{cobalt::love.plot()}} to modify the plot, e.g.
+\code{list(thresholds = c(m = .25), var.names = c(age = "Age"), colors = c("grey60", "navy"), title = "Balance")}. These are merged with
+the defaults \code{thresholds = c(m = .1)}, \code{abs = TRUE},
+\code{var.order = "unadjusted"} and \code{line = TRUE}; an element given here
+replaces the default of the same name. Only used if
+\code{love.plot.show = TRUE}. Default \code{list()}.}
+
+\item{plot_love_iptw}{Logical. If \code{TRUE}, print the zone-shaded love plot
+created by \code{\link[=plot_love_iptw]{plot_love_iptw()}} (balanced / minor / moderate / severe
+imbalance). Can be used together with or instead of \code{love.plot.show}.
+Default \code{FALSE}.}
+
+\item{plot_love_iptw.args}{A named list of arguments passed to
+\code{\link[=plot_love_iptw]{plot_love_iptw()}}, e.g.
+\code{list(labels = c(sex = "Sex", age = "Age"), title = "My title")}.
+The weighting object is supplied automatically. If no \code{title} is given,
+it is built from the weighting method. Only used if
+\code{plot_love_iptw = TRUE}. Default \code{list()}.}
 
 \item{table.show}{Logical. If \code{TRUE}, print the merged baseline table
 (weighted vs. unweighted). Default \code{FALSE}.}
@@ -79,7 +102,8 @@ Called for its return value; plots and tables are side effects.
 \description{
 Estimates propensity score weights for a binary or multi-category treatment
 using any method and estimand supported by \pkg{WeightIt}, and optionally
-produces a love plot and a baseline table comparing the weighted and
+produces love plots (via \code{\link[cobalt:love.plot]{cobalt::love.plot()}} and/or \code{\link[=plot_love_iptw]{plot_love_iptw()}})
+and a baseline table comparing the weighted and
 unweighted populations. The table can show either p-values or standardized
 mean differences (SMD).
 }
@@ -145,11 +169,26 @@ d_eb <- prop_score(d, c("age", "sex"), "arm", method = "ebal",
 # Multi-category treatment
 d3 <- prop_score(d, baselinevars = c("age", "sex"), treatment = "arm3",
                  table.show = TRUE)
+
+# Customised cobalt love plot
+d4 <- prop_score(d, c("age", "sex"), "arm",
+                 love.plot.show = TRUE,
+                 love.plot.args = list(thresholds = c(m = .25),
+                                       var.names  = c(age = "Age",
+                                                      sex_M = "Sex (male)"),
+                                       colors     = c("grey60", "navy"),
+                                       title      = "Covariate balance"))
+
+# Zone-shaded love plot with English labels
+d5 <- prop_score(d, c("age", "sex"), "arm",
+                 plot_love_iptw = TRUE,
+                 plot_love_iptw.args = list(labels = c(age = "Age",
+                                                       sex = "Sex")))
 }
 
 }
 \seealso{
-\code{\link[WeightIt:weightit]{WeightIt::weightit()}}, \code{\link[cobalt:love.plot]{cobalt::love.plot()}},
+\code{\link[WeightIt:weightit]{WeightIt::weightit()}}, \code{\link[cobalt:love.plot]{cobalt::love.plot()}}, \code{\link[=plot_love_iptw]{plot_love_iptw()}},
 \code{\link[gtsummary:tbl_summary]{gtsummary::tbl_summary()}}, \code{\link[gtsummary:tbl_svysummary]{gtsummary::tbl_svysummary()}},
 \code{\link[gtsummary:add_difference]{gtsummary::add_difference()}}
 }
