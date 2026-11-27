@@ -2,7 +2,8 @@
 #'
 #' Estimates propensity score weights for a binary or multi-category treatment
 #' using any method and estimand supported by \pkg{WeightIt}, and optionally
-#' produces a love plot and a baseline table comparing the weighted and
+#' produces love plots (via [cobalt::love.plot()] and/or [plot_love_iptw()])
+#' and a baseline table comparing the weighted and
 #' unweighted populations. The table can show either p-values or standardized
 #' mean differences (SMD).
 #'
@@ -59,8 +60,26 @@
 #'   differences (and an overall column) instead of p-values. Only available
 #'   for binary treatments; requires the \pkg{smd} package. Default `FALSE`.
 #' @param love.plot.show Logical. If `TRUE`, print a love plot of absolute
-#'   standardized mean differences before and after weighting
-#'   (threshold 0.1). Default `FALSE`.
+#'   standardized mean differences before and after weighting, made with
+#'   [cobalt::love.plot()]. Default `FALSE`.
+#' @param love.plot.args A named list of arguments passed to
+#'   [cobalt::love.plot()] to modify the plot, e.g.
+#'   `list(thresholds = c(m = .25), var.names = c(age = "Age"),
+#'   colors = c("grey60", "navy"), title = "Balance")`. These are merged with
+#'   the defaults `thresholds = c(m = .1)`, `abs = TRUE`,
+#'   `var.order = "unadjusted"` and `line = TRUE`; an element given here
+#'   replaces the default of the same name. Only used if
+#'   `love.plot.show = TRUE`. Default `list()`.
+#' @param plot_love_iptw Logical. If `TRUE`, print the zone-shaded love plot
+#'   created by [plot_love_iptw()] (balanced / minor / moderate / severe
+#'   imbalance). Can be used together with or instead of `love.plot.show`.
+#'   Default `FALSE`.
+#' @param plot_love_iptw.args A named list of arguments passed to
+#'   [plot_love_iptw()], e.g.
+#'   `list(labels = c(sex = "Sex", age = "Age"), title = "My title")`.
+#'   The weighting object is supplied automatically. If no `title` is given,
+#'   it is built from the weighting method. Only used if
+#'   `plot_love_iptw = TRUE`. Default `list()`.
 #' @param table.show Logical. If `TRUE`, print the merged baseline table
 #'   (weighted vs. unweighted). Default `FALSE`.
 #' @param table.show.html Logical. If `TRUE`, write the table as raw HTML via
@@ -74,7 +93,7 @@
 #'   column `PS` taken from the fitted weighting model.
 #'   Called for its return value; plots and tables are side effects.
 #'
-#' @seealso [WeightIt::weightit()], [cobalt::love.plot()],
+#' @seealso [WeightIt::weightit()], [cobalt::love.plot()], [plot_love_iptw()],
 #'   [gtsummary::tbl_summary()], [gtsummary::tbl_svysummary()],
 #'   [gtsummary::add_difference()]
 #'
@@ -109,6 +128,21 @@
 #' # Multi-category treatment
 #' d3 <- prop_score(d, baselinevars = c("age", "sex"), treatment = "arm3",
 #'                  table.show = TRUE)
+#'
+#' # Customised cobalt love plot
+#' d4 <- prop_score(d, c("age", "sex"), "arm",
+#'                  love.plot.show = TRUE,
+#'                  love.plot.args = list(thresholds = c(m = .25),
+#'                                        var.names  = c(age = "Age",
+#'                                                       sex_M = "Sex (male)"),
+#'                                        colors     = c("grey60", "navy"),
+#'                                        title      = "Covariate balance"))
+#'
+#' # Zone-shaded love plot with English labels
+#' d5 <- prop_score(d, c("age", "sex"), "arm",
+#'                  plot_love_iptw = TRUE,
+#'                  plot_love_iptw.args = list(labels = c(age = "Age",
+#'                                                        sex = "Sex")))
 #' }
 #'
 #' @export
@@ -124,6 +158,9 @@ prop_score <- function(data,
                        stabilize         = FALSE,
                        smd               = FALSE,
                        love.plot.show    = FALSE,
+                       love.plot.args    = list(),
+                       plot_love_iptw    = FALSE,
+                       plot_love_iptw.args = list(),
                        table.show        = FALSE,
                        table.show.html   = FALSE,
                        ...) {
@@ -144,6 +181,14 @@ prop_score <- function(data,
   if (!is.character(method) || length(method) != 1 ||
       !is.character(estimand) || length(estimand) != 1) {
     stop("`method` and `estimand` must each be a single character string.",
+         call. = FALSE)
+  }
+  if (!is.list(love.plot.args)) {
+    stop("`love.plot.args` must be a named list, e.g. list(thresholds = c(m = .25)).",
+         call. = FALSE)
+  }
+  if (!is.list(plot_love_iptw.args)) {
+    stop("`plot_love_iptw.args` must be a named list, e.g. list(labels = c(age = \"Age\")).",
          call. = FALSE)
   }
   if (isTRUE(smd)) {
@@ -174,11 +219,24 @@ prop_score <- function(data,
 
   # ---- love plot ------------------------------------------------------------
   if (isTRUE(love.plot.show)) {
-    print(cobalt::love.plot(W.out,
-                            thresholds = c(m = .1),
-                            abs        = TRUE,
-                            var.order  = "unadjusted",
-                            line       = TRUE))
+    lp_defaults <- list(thresholds = c(m = .1),
+                        abs        = TRUE,
+                        var.order  = "unadjusted",
+                        line       = TRUE)
+    lp_args <- utils::modifyList(lp_defaults, love.plot.args)
+    print(do.call(cobalt::love.plot, c(list(x = W.out), lp_args)))
+  }
+
+  # ---- zone-shaded love plot (plot_love_iptw) -------------------------------
+  if (isTRUE(plot_love_iptw)) {
+    pl_defaults <- list(title = paste0("Covariate balance before and after ",
+                                       weight_label))
+    pl_args <- utils::modifyList(pl_defaults, plot_love_iptw.args)
+    pl_args$w.out <- W.out
+    # the argument `plot_love_iptw` (logical) masks the function name here,
+    # so the function is looked up explicitly
+    pl_fun <- get("plot_love_iptw", mode = "function")
+    print(do.call(pl_fun, pl_args))
   }
 
   # ---- baseline tables ------------------------------------------------------

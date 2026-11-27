@@ -22,7 +22,8 @@ utils::globalVariables(c(
   "hr", "conf_low", "conf_high", "p_value", "median_a", "median_b",
   "n", "n_event", "covariate_label", "allpatients_n", "covlabel_n",
   "is_first_of_block_covlabel", "is_first_of_block_subgroup",
-  "is_first_of_block_N", "n_fmt", "endpoint_label", "covariate_label_key"
+  "is_first_of_block_N", "n_fmt", "endpoint_label", "covariate_label_key",
+  ".w"
 ))
 
 
@@ -52,6 +53,17 @@ utils::globalVariables(c(
 #      supplementary table (`continuous_effects`) rather than as a forest-plot
 #      row, because it estimates a different quantity (the covariate's own
 #      prognostic effect) than the treatment-effect rows do.
+#
+# Weights can differ per covariate: `weights` may be a character vector with
+# one weight column per covariate (same order as `covariates`), with NA
+# meaning "unweighted" for that covariate. Every subgroup model and
+# Kaplan-Meier fit for a covariate uses that covariate's weights.
+# The "All patients" rows can use their own weights via `overall_weights`
+# (a single column name, or NA for unweighted). If `overall_weights` is NULL,
+# each covariate's "All patients" rows fall back to that covariate's weights.
+# If `weights` is NULL but `overall_weights` is given, the overall weights are
+# used for every covariate's subgroup rows too. If neither is given, all
+# analyses are unweighted.
 #
 # Excluding subgroup rows from the plot (e.g. "Unknown" categories) is fully
 # under caller control via `exclude_levels`, keyed by the raw `covariates`
@@ -99,6 +111,85 @@ utils::globalVariables(c(
   }
 
   invisible(TRUE)
+}
+
+#' Resolve the `weights` argument into one entry per covariate
+#'
+#' Accepts:
+#'   * NULL                         -> every covariate unweighted
+#'   * a single column name         -> same weights for every covariate
+#'   * a character vector (or list) of length(covariates), in the same order
+#'     as `covariates`; NA / NULL / "" entries mean "unweighted" for that
+#'     covariate.
+#'
+#' @return A list of length(covariates); each element is a column name or NULL.
+#' @noRd
+.resolve_weights <- function(weights, covariates, data) {
+
+  n_cov <- length(covariates)
+  if (is.null(weights)) return(rep(list(NULL), n_cov))
+
+  if (is.list(weights)) {
+    weights <- vapply(weights, function(w) {
+      if (is.null(w) || length(w) == 0) NA_character_ else as.character(w)[1]
+    }, character(1))
+  }
+
+  if (!(is.character(weights) || all(is.na(weights)))) {
+    stop("`weights` must be NULL, a column name, or a character vector of column names (one per covariate).",
+         call. = FALSE)
+  }
+  weights <- as.character(weights)
+  weights[!is.na(weights) & weights == ""] <- NA_character_
+
+  if (length(weights) == 1) weights <- rep(weights, n_cov)
+  if (length(weights) != n_cov) {
+    stop(sprintf(
+      "`weights` (length %d) must be NULL, length 1, or the same length as `covariates` (length %d), in the same order.",
+      length(weights), n_cov
+    ), call. = FALSE)
+  }
+
+  used <- unique(stats::na.omit(weights))
+  missing_w <- setdiff(used, names(data))
+  if (length(missing_w) > 0) {
+    stop(sprintf("Weight column(s) not found in `data`: %s",
+                 paste(missing_w, collapse = ", ")), call. = FALSE)
+  }
+  for (w in used) {
+    x <- data[[w]]
+    if (!is.numeric(x)) {
+      stop(sprintf("Weight column '%s' must be numeric.", w), call. = FALSE)
+    }
+    if (any(x < 0, na.rm = TRUE)) {
+      stop(sprintf("Weight column '%s' contains negative values.", w), call. = FALSE)
+    }
+  }
+
+  lapply(weights, function(w) if (is.na(w)) NULL else w)
+}
+
+#' Fit coxph() with an optional weight column (by name)
+#'
+#' The weight column is copied to `.w` so the lookup cannot be confused with
+#' other columns or with the `weights` argument itself.
+#' @noRd
+.coxph_w <- function(fmla, d, weights) {
+  if (is.null(weights)) {
+    return(tryCatch(survival::coxph(fmla, data = d), error = function(e) NULL))
+  }
+  d$.w <- d[[weights]]
+  tryCatch(survival::coxph(fmla, data = d, weights = .w), error = function(e) NULL)
+}
+
+#' Fit survfit() with an optional weight column (by name)
+#' @noRd
+.survfit_w <- function(fmla, d, weights) {
+  if (is.null(weights)) {
+    return(tryCatch(survival::survfit(fmla, data = d), error = function(e) NULL))
+  }
+  d$.w <- d[[weights]]
+  tryCatch(survival::survfit(fmla, data = d, weights = .w), error = function(e) NULL)
 }
 
 #' Decide whether a covariate should be treated as categorical or continuous
@@ -167,7 +258,9 @@ utils::globalVariables(c(
 #' @noRd
 .fit_treatment_cox <- function(data, time_var, event_var, treatment, arm_order, weights) {
 
-  needed <- c(time_var, event_var, treatment)
+  # Rows with a missing weight are dropped here too, so N / events match the
+  # rows actually used by the model.
+  needed <- c(time_var, event_var, treatment, weights)
   d <- data[stats::complete.cases(data[, needed, drop = FALSE]), , drop = FALSE]
   d[[treatment]] <- factor(as.character(d[[treatment]]), levels = arm_order)
   d <- d[!is.na(d[[treatment]]), , drop = FALSE]
@@ -185,11 +278,7 @@ utils::globalVariables(c(
   fmla <- stats::as.formula(
     paste0("survival::Surv(", time_var, ", ", event_var, ") ~ ", treatment)
   )
-  if (is.null(weights)) {
-    fit <- tryCatch(survival::coxph(fmla, data = d), error = function(e) NULL)
-  } else {
-    fit <- tryCatch(survival::coxph(fmla, data = d, weights = get(weights)), error = function(e) NULL)
-  }
+  fit <- .coxph_w(fmla, d, weights)
 
   list(model = fit, n = n, n_event = n_event)
 }
@@ -200,7 +289,7 @@ utils::globalVariables(c(
 
   out <- tibble::tibble(arm = arm_order, median = NA_real_)
 
-  needed <- c(time_var, event_var, treatment)
+  needed <- c(time_var, event_var, treatment, weights)
   d <- data[stats::complete.cases(data[, needed, drop = FALSE]), , drop = FALSE]
   d[[treatment]] <- factor(as.character(d[[treatment]]), levels = arm_order)
   d <- d[!is.na(d[[treatment]]), , drop = FALSE]
@@ -209,11 +298,7 @@ utils::globalVariables(c(
   fmla <- stats::as.formula(
     paste0("survival::Surv(", time_var, ", ", event_var, ") ~ ", treatment)
   )
-  if (is.null(weights)) {
-    fit <- tryCatch(survival::survfit(fmla, data = d), error = function(e) NULL)
-  } else {
-    fit <- tryCatch(survival::survfit(fmla, data = d, weights = get(weights)), error = function(e) NULL)
-  }
+  fit <- .survfit_w(fmla, d, weights)
 
   if (is.null(fit)) return(out)
 
@@ -234,7 +319,7 @@ utils::globalVariables(c(
 #' @noRd
 .row_from_fit <- function(covariate, covariate_label, subgroup, indent,
                           endpoint, endpoint_label, fit_info, median_tbl,
-                          arm_order) {
+                          arm_order, weights = NULL) {
 
   fit <- fit_info$model
   if (is.null(fit)) {
@@ -259,6 +344,7 @@ utils::globalVariables(c(
     indent          = indent,
     endpoint        = endpoint,
     endpoint_label  = endpoint_label,
+    weights         = if (is.null(weights)) NA_character_ else weights,
     n               = fit_info$n,
     n_event         = fit_info$n_event,
     median_a        = med_a,
@@ -272,10 +358,17 @@ utils::globalVariables(c(
 
 #' Build the full results table + fitted models for a single covariate,
 #' across all requested endpoints.
+#'
+#' @param weights NULL (unweighted) or a single weight column name, used for
+#'   every subgroup model / KM fit of this covariate (and for the
+#'   supplementary continuous-covariate model).
+#' @param overall_weights NULL (unweighted) or a single weight column name,
+#'   used for the "All patients" rows of this covariate.
 #' @noRd
 .build_covariate_results <- function(data, covariate, label, treatment,
                                      time, event, endpoint_labels,
-                                     arm_order, continuous_vars, weights) {
+                                     arm_order, continuous_vars, weights,
+                                     overall_weights = weights) {
 
   type <- .detect_covariate_type(data, covariate, continuous_vars)
   x <- data[[covariate]]
@@ -315,13 +408,17 @@ utils::globalVariables(c(
       data_work[!is.na(data_work$.subgroup_group) & data_work$.subgroup_group == lev, , drop = FALSE]
     }
 
+    # "All patients" rows use the overall weights; subgroup rows use the
+    # covariate-specific weights.
+    w_lev <- if (is_overall) overall_weights else weights
+
     for (ep in seq_along(time)) {
       time_var  <- time[ep]
       event_var <- event[ep]
       ep_label  <- endpoint_labels[ep]
 
-      fit_info <- .fit_treatment_cox(sub_data, time_var, event_var, treatment, arm_order, weights = weights)
-      med_tbl  <- .median_survival_by_arm(sub_data, time_var, event_var, treatment, arm_order, weights = weights)
+      fit_info <- .fit_treatment_cox(sub_data, time_var, event_var, treatment, arm_order, weights = w_lev)
+      med_tbl  <- .median_survival_by_arm(sub_data, time_var, event_var, treatment, arm_order, weights = w_lev)
 
       key <- paste(label, lev, ep_label, sep = " | ")
       models[[key]] <- fit_info$model
@@ -329,7 +426,8 @@ utils::globalVariables(c(
       rows[[length(rows) + 1]] <- .row_from_fit(
         covariate = covariate, covariate_label = label, subgroup = lev,
         indent = !is_overall, endpoint = time_var, endpoint_label = ep_label,
-        fit_info = fit_info, median_tbl = med_tbl, arm_order = arm_order
+        fit_info = fit_info, median_tbl = med_tbl, arm_order = arm_order,
+        weights = w_lev
       )
     }
   }
@@ -344,7 +442,7 @@ utils::globalVariables(c(
       event_var <- event[ep]
       ep_label  <- endpoint_labels[ep]
 
-      needed <- c(time_var, event_var, treatment, covariate)
+      needed <- c(time_var, event_var, treatment, covariate, weights)
       d <- data[stats::complete.cases(data[, needed, drop = FALSE]), , drop = FALSE]
       if (nrow(d) == 0) return(NULL)
 
@@ -353,17 +451,14 @@ utils::globalVariables(c(
         " + survival::strata(", treatment, ")"
       ))
 
-      if (is.null(weights)) {
-        fit <- tryCatch(survival::coxph(fmla, data = d), error = function(e) NULL)
-      } else {
-        fit <- tryCatch(survival::coxph(fmla, data = d, weights = get(weights)), error = function(e) NULL)
-      }
+      fit <- .coxph_w(fmla, d, weights)
       if (is.null(fit)) return(NULL)
 
       tt <- broom::tidy(fit, exponentiate = TRUE, conf.int = TRUE)
       tibble::tibble(
         covariate = covariate, covariate_label = label,
         endpoint = time_var, endpoint_label = ep_label,
+        weights = if (is.null(weights)) NA_character_ else weights,
         hr = tt$estimate[1], conf_low = tt$conf.low[1], conf_high = tt$conf.high[1],
         p_value = tt$p.value[1], n = nrow(d),
         interpretation = "HR per 1-unit increase, adjusted for treatment (strata)"
@@ -636,6 +731,10 @@ utils::globalVariables(c(
   df_results <- dplyr::bind_rows(results)
   endpoints <- unique(df_results$endpoint_label)
 
+  # NOTE: only the first covariate's "All patients" rows are kept here. When
+  # `overall_weights` is set, every "All patients" row uses those weights, so
+  # this choice makes no difference; otherwise the row uses the FIRST
+  # covariate's weights.
   df <- df_results |>
     .filter_excluded_subgroups(exclude_levels) |>
     dplyr::mutate(allpatients_n = cumsum(subgroup == "All patients")) |>
@@ -940,9 +1039,34 @@ utils::globalVariables(c(
 #'   \code{NULL}, "nice" ticks within \code{xlim} are chosen automatically.
 #' @param length_plot Integer. Width of the blank column reserved for the CI
 #'   graphic, expressed as a number of spaces. Default 40.
-#' @param weights Optional character string naming a weight column in
-#'   \code{data}, passed to \code{survival::coxph()} and
-#'   \code{survival::survfit()}. Default \code{NULL} (unweighted).
+#' @param weights Optional weights, passed to \code{survival::coxph()} and
+#'   \code{survival::survfit()}. One of:
+#'   \itemize{
+#'     \item \code{NULL} (default): if \code{overall_weights} is also
+#'       \code{NULL} (or \code{NA}), all analyses are unweighted; if
+#'       \code{overall_weights} is a column name, that column is used for
+#'       every covariate's subgroup analyses as well as for the
+#'       "All patients" rows;
+#'     \item a single column name: the same weights for every covariate;
+#'     \item a character vector of column names with the same length and
+#'       order as \code{covariates}: \code{weights[i]} is used for every
+#'       model of \code{covariates[i]}. Use \code{NA} for a covariate that
+#'       should be analysed unweighted.
+#'   }
+#'   Matching is by position, not by column name: \code{weights[i]} belongs
+#'   to \code{covariates[i]}. Rows with a missing weight are dropped from that
+#'   covariate's subgroup analyses.
+#' @param overall_weights Optional weights for the "All patients" rows (in
+#'   every per-covariate plot and in \code{combined_plots}). One of:
+#'   \itemize{
+#'     \item \code{NULL} (default): each covariate's "All patients" rows use
+#'       that covariate's \code{weights} (in \code{combined_plots}, the first
+#'       covariate's);
+#'     \item a single column name, e.g. \code{"weights_ALL"}. If
+#'       \code{weights} is \code{NULL}, this column is also used for every
+#'       covariate's subgroup rows;
+#'     \item \code{NA}: "All patients" rows are unweighted.
+#'   }
 #' @param ci_pch Point symbol for the HR estimate. Default 15 (filled square).
 #' @param ci_lty Line type of the confidence interval. Default 1.
 #' @param ci_lwd Line width of the confidence interval. Default 3.
@@ -984,7 +1108,7 @@ utils::globalVariables(c(
 #'   \item{all_result}{Named list of the per-covariate results tables.}
 #'   \item{results_table}{Tidy data frame with one row per
 #'     covariate x subgroup x endpoint, including HR, 95 percent CI, p-value, N,
-#'     events, and median survival per arm.}
+#'     events, median survival per arm, and the weight column used.}
 #'   \item{median_survival_table}{Subset of \code{results_table} with just
 #'     the median survival columns, for easy tabulation.}
 #'   \item{plots}{Named list of forestploter plot objects, one per covariate
@@ -997,6 +1121,11 @@ utils::globalVariables(c(
 #'   \item{arm_order}{The two treatment arm levels, in the order used for
 #'     the HR calculation (Arm A vs Arm B).}
 #'   \item{arm_labels}{The display labels used for the two arms.}
+#'   \item{weights_used}{Named character vector (names = covariate labels)
+#'     giving the weight column used for each covariate's subgroup rows
+#'     (\code{NA} = unweighted).}
+#'   \item{overall_weights_used}{The weight column used for the "All
+#'     patients" rows, per covariate (\code{NA} = unweighted).}
 #' }
 #'
 #' @details
@@ -1007,20 +1136,50 @@ utils::globalVariables(c(
 #' returned separately in \code{continuous_effects}. Subgroups are fitted
 #' independently: no interaction test is computed.
 #'
+#' Weighting rules:
+#' \itemize{
+#'   \item neither \code{weights} nor \code{overall_weights}: unweighted;
+#'   \item only \code{overall_weights}: used for every covariate's subgroup
+#'     rows and for the "All patients" rows;
+#'   \item only \code{weights}: per-covariate weights, also used for that
+#'     covariate's "All patients" rows;
+#'   \item both: per-covariate weights for subgroup rows,
+#'     \code{overall_weights} for the "All patients" rows.
+#' }
+#'
 #' @examples
 #' \dontrun{
+#' # Different weights for each covariate (same order as `covariates`);
+#' # NA = unweighted for that covariate.
 #' result <- cox_subgroup_forest(
 #'   data = my_trial_data,
-#'   covariates = c("sex", "age"),
-#'   labels = c("Sex", "Age"),
+#'   covariates = c("sex", "age", "ecog_ps"),
+#'   labels = c("Sex", "Age", "ECOG PS"),
 #'   treatment = "arm",
 #'   time = "os_time",
 #'   event = "os_event",
 #'   continuous_vars = "age",
+#'   weights = c("w_sex", "w_age", NA),
+#'   overall_weights = "w_all",
 #'   exclude_levels = list(sex = "Unknown")
 #' )
 #' grid::grid.draw(result$plots[["Sex"]])
 #' grid::grid.draw(result$combined_plots)
+#' result$weights_used
+#' result$overall_weights_used
+#'
+#' # Only overall weights: "w_all" is used for every covariate and for
+#' # the "All patients" rows.
+#' result2 <- cox_subgroup_forest(
+#'   data = my_trial_data,
+#'   covariates = c("sex", "age", "ecog_ps"),
+#'   labels = c("Sex", "Age", "ECOG PS"),
+#'   treatment = "arm",
+#'   time = "os_time",
+#'   event = "os_event",
+#'   overall_weights = "w_all"
+#' )
+#' result2$weights_used
 #' }
 #' @export
 cox_subgroup_forest <- function(data, covariates, labels, treatment, time, event,
@@ -1028,7 +1187,8 @@ cox_subgroup_forest <- function(data, covariates, labels, treatment, time, event
                                 arm_order = NULL, treatment_labels = NULL,
                                 digits = 2, time_unit = "months", palette = NULL,
                                 xlim = NULL, ticks_at = NULL, length_plot = 40,
-                                weights = NULL, ci_pch = 15, ci_lty = 1,
+                                weights = NULL, overall_weights = NULL,
+                                ci_pch = 15, ci_lty = 1,
                                 ci_lwd = 3, ci_Theight = 0.4, sizes = 0.6,
                                 exclude_levels = NULL,
                                 row_height = 1,
@@ -1037,6 +1197,30 @@ cox_subgroup_forest <- function(data, covariates, labels, treatment, time, event
                                 label_indent = 4) {
 
   .validate_forest_inputs(data, covariates, labels, treatment, time, event)
+
+  # Weights for the "All patients" rows. NULL = fall back to each covariate's
+  # weights; NA = unweighted; otherwise a single column name.
+  use_overall_weights <- !is.null(overall_weights)
+  overall_w <- NULL
+  if (use_overall_weights) {
+    if (length(overall_weights) != 1) {
+      stop("`overall_weights` must be NULL, NA, or a single column name.", call. = FALSE)
+    }
+    overall_w <- .resolve_weights(overall_weights, "overall", data)[[1]]
+  }
+
+  # One weight column (or NULL) per covariate, in the order of `covariates`.
+  #   * weights = NULL, overall_weights = NULL -> everything unweighted
+  #   * weights = NULL, overall_weights given  -> overall weights used for
+  #                                               every covariate AND "All patients"
+  #   * weights given                          -> per-covariate weights as before
+  #                                               ("All patients" uses
+  #                                               overall_weights if given)
+  if (is.null(weights) && use_overall_weights) {
+    weights_list <- rep(list(overall_w), length(covariates))
+  } else {
+    weights_list <- .resolve_weights(weights, covariates, data)
+  }
 
   if (!is.numeric(label_indent) || length(label_indent) != 1 ||
       is.na(label_indent) || label_indent < 0) {
@@ -1088,15 +1272,20 @@ cox_subgroup_forest <- function(data, covariates, labels, treatment, time, event
   all_plots   <- list()
 
   continuous_summaries <- list()
+  overall_weights_used <- stats::setNames(rep(NA_character_, length(covariates)), labels)
 
   for (i in seq_along(covariates)) {
     cov <- covariates[i]
     lab <- labels[i]
+    w_i <- weights_list[[i]]   # NULL = unweighted for this covariate
+    w_overall_i <- if (use_overall_weights) overall_w else w_i
+    overall_weights_used[i] <- if (is.null(w_overall_i)) NA_character_ else w_overall_i
 
     res <- .build_covariate_results(
       data = data, covariate = cov, label = lab, treatment = treatment,
       time = time, event = event, endpoint_labels = endpoint_labels,
-      arm_order = arm_order, continuous_vars = continuous_vars, weights = weights
+      arm_order = arm_order, continuous_vars = continuous_vars,
+      weights = w_i, overall_weights = w_overall_i
     )
 
     all_results[[lab]] <- res$results
@@ -1138,6 +1327,11 @@ cox_subgroup_forest <- function(data, covariates, labels, treatment, time, event
   names(median_survival_table)[match(c("median_a", "median_b"), names(median_survival_table))] <-
     paste0("median_", arm_labels)
 
+  weights_used <- stats::setNames(
+    vapply(weights_list, function(w) if (is.null(w)) NA_character_ else w, character(1)),
+    labels
+  )
+
   list(
     models                = all_models,
     all_result            = all_results,
@@ -1147,6 +1341,8 @@ cox_subgroup_forest <- function(data, covariates, labels, treatment, time, event
     combined_plots        = combined_plot,
     continuous_effects    = if (length(continuous_summaries) > 0) dplyr::bind_rows(continuous_summaries) else NULL,
     arm_order             = arm_order,
-    arm_labels            = arm_labels
+    arm_labels            = arm_labels,
+    weights_used          = weights_used,
+    overall_weights_used  = overall_weights_used
   )
 }

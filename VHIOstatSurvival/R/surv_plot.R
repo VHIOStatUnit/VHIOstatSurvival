@@ -468,6 +468,19 @@ surv_plot <- function(
   }
 }
 
+#' @keywords internal
+#' @noRd
+.format_number_hr <- function(x) {
+  if (is.na(x)) return(NA)
+  digits_before <- nchar(as.character(floor(abs(x))))
+
+  if (digits_before > 4) {
+    format(x, scientific = TRUE, digits = 1)
+  } else {
+    round(x, 2)
+  }
+}
+
 
 # -----------------------------------------------------------
 # Helping function to extract survival probabilities at
@@ -666,11 +679,11 @@ surv_plot <- function(
   # =====================================================
   if (!is.null(cox_model) && HR.show) {
     cox_summary <- summary(cox_model)
-    hr      <- sapply(cox_summary$coefficients[, "exp(coef)"], .format_number)
-    ci_low  <- sapply(cox_summary$conf.int[, "lower .95"],     .format_number)
-    ci_high <- sapply(cox_summary$conf.int[, "upper .95"],     .format_number)
+    hr      <- sapply(cox_summary$coefficients[, "exp(coef)"], .format_number_hr)
+    ci_low  <- sapply(cox_summary$conf.int[, "lower .95"],     .format_number_hr)
+    ci_high <- sapply(cox_summary$conf.int[, "upper .95"],     .format_number_hr)
     pval     <- cox_summary$coefficients[, "Pr(>|z|)"]
-    pval_txt <- ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval))
+    pval_txt <-  ifelse(is.na(pval), NA, ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval)))
     p.value  <- TRUE   # always show p-value from model
   }
 
@@ -683,11 +696,11 @@ surv_plot <- function(
     scale       <- aft_model$scale
     coef_val <- vapply(names_var, function(v) coef(aft_model)[v],          numeric(1))
     se       <- vapply(names_var, function(v) sqrt(vcov(aft_model)[v, v]), numeric(1))
-    hr      <- sapply(exp(-coef_val / scale),                .format_number)
-    ci_low  <- sapply(exp(-(coef_val + 1.96 * se) / scale), .format_number)
-    ci_high <- sapply(exp(-(coef_val - 1.96 * se) / scale), .format_number)
+    hr      <- sapply(exp(-coef_val / scale),                .format_number_hr)
+    ci_low  <- sapply(exp(-(coef_val + 1.96 * se) / scale), .format_number_hr)
+    ci_high <- sapply(exp(-(coef_val - 1.96 * se) / scale), .format_number_hr)
     pval     <- vapply(names_var, function(v) aft_summary$table[v, "p"], numeric(1))
-    pval_txt <- ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval))
+    pval_txt <- ifelse(is.na(pval), NA, ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval)))
     p.value  <- TRUE
   }
 
@@ -704,15 +717,15 @@ surv_plot <- function(
     if (nrow(data.table) != length(labels) - 1L) {
       stop("data.table must have one row per non-reference group (in strata order).")
     }
-    hr      <- sapply(data.table$HR,        .format_number)
-    ci_low  <- sapply(data.table$conf.low,  .format_number)
-    ci_high <- sapply(data.table$conf.high, .format_number)
+    hr      <- sapply(data.table$HR,        .format_number_hr)
+    ci_low  <- sapply(data.table$conf.low,  .format_number_hr)
+    ci_high <- sapply(data.table$conf.high, .format_number_hr)
 
     if (p.value) {
       if (!"p.val" %in% names(data.table))
         stop("data.table must contain a 'p.val' column when p.value = TRUE.")
       pval     <- data.table$p.val
-      pval_txt <- ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval))
+      pval_txt <- ifelse(is.na(pval), NA, ifelse(pval < 0.001, "<0.001", sprintf("%.3f", pval)))
     }
   }
 
